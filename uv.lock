@@ -1,0 +1,8 @@
+version = 1
+revision = 3
+requires-python = ">=3.14"
+
+[[package]]
+name = "protein-secondary-structure-prediction-dl"
+version = "0.1.0"
+source = { virtual = "." }
