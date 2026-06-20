@@ -44,6 +44,15 @@ You should have the `npy` files in the `data/` folder after running the command.
 | `cb513+profile_split1`          | 514, 39900  |
 
 
+Test data pipeline as follows:
+
+```bash
+uv run tests/test_datasets.py
+```
+
+Once reshaped, we will have for each sample 700 amino-acids and for each 57 features, in this form
+
+
 ### Model
 
 

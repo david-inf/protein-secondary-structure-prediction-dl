@@ -5,12 +5,51 @@
 from utils import LOG
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Optional, List, Tuple
 import numpy as np
+import torch
+from torch import Tensor
+from torch.utils.data import TensorDataset, DataLoader
 
 
 """TODO:
 - [ ] Do an offline preprocessing to create dataset splits in advance?
+- [x] Maybe leave the NoSeq feature in the data, and let the model learn to ignore it?
+- [x] Collate function for addressing padding and one-hot encoding of labels
 """
+
+SPLITS = {
+    "cullpdb": {
+        "train": np.arange(0, 5430),
+        "test": np.arange(5435, 5690),
+        "eval": np.arange(5690, 5926),
+    },
+    # "cb513": {
+    #     "test": np.arange(0, 514),
+    # },
+    "cullpdb_filtered": {
+        "train": np.arange(0, int(0.8 * 5365)),
+        "eval": np.arange(int(0.8 * 5365), 5365),
+    }
+}
+
+
+def my_collate(batch: List[Tuple[Tensor, Tensor]]):
+    """Custom collate function to separate features and labels."""
+    # Get Xs
+    data = [item[0] for item in batch]  # shape (batch_size, 700, 45)
+
+    # Ys from one-hot to integer
+    targets = []  # will result in shape (batch_size, 700)
+    for item in batch:
+        # y has shape (700, 9)
+        y = item[1].argmax(dim=1)  # shape (700,)
+        # check if padding token is present
+        mask = (y == 8)  # NoSeq token is class 8
+        y[mask] = -100  # set padding token to -100 for CrossEntropyLoss
+        targets.append(y)
+
+    return torch.stack(data), torch.stack(targets)
 
 
 @dataclass
@@ -18,7 +57,7 @@ class DataArgs:
     """Arguments for data loading and preprocessing."""
 
     # Data paths
-    data_path: Path = Path("data")
+    dataset_name: str = "cullpdb"  # cullpdb, cullpdb_filtered, cb513
     split: str = "train"  # train, eval, test
 
     # Data loading parameters
@@ -33,7 +72,7 @@ class DataPipeline:
 
     def __init__(
         self,
-        args: DataArgs
+        args: Optional[DataArgs] = None
     ):
 
         if args is None:
@@ -42,67 +81,125 @@ class DataPipeline:
 
         self.args = args
 
+        # Take the corresponding dataset path based on the provided dataset name
+        self.dataset_path: Optional[Path] = None
+        if self.args.dataset_name == "cullpdb":
+            self.dataset_path = Path("data/cullpdb+profile_5926.npy")
+        elif self.args.dataset_name == "cullpdb_filtered":
+            self.dataset_path = Path("data/cullpdb+profile_5926_filtered.npy")
+        elif self.args.dataset_name == "cb513":
+            self.dataset_path = Path("data/cb513+profile_split1.npy")
+        if self.dataset_path is None:
+            raise ValueError(f"Cannot find dataset path for '{self.args.dataset_name}'.")
+
     def run(self):
         """Run the data pipeline."""
         LOG.info("Running data pipeline...")
 
         # 1. Load data
-        dataset = self._load_data()
-        # 2. Build data loader
+        dataset = self._load_data(self.dataset_path)
 
-    def _load_data(self) -> np.ndarray:
+        # 2. Build data loader
+        dataloader = self._build_loader(dataset)
+
+        return dataloader
+
+    def _load_data(self, path: Path) -> TensorDataset:
         """Load data from disk."""
         LOG.info(" Loading data...")
 
-        # Load npy file
-        data = np.load(self.args.data_path, allow_pickle=True)
-        LOG.info(f"  Data loaded from '{self.args.data_path}'. Shape: {data.shape}")
+        # Load .npy file
+        data = np.load(path, allow_pickle=True)
+        LOG.info(f"  Data loaded from '{path}'. Shape: {data.shape}")
 
         # Check shape and content
         assert isinstance(data, np.ndarray), "Data should be a numpy array."
         assert data.ndim == 2, "Data should be a 2D array."
         assert data.shape[1] == 700 * 57, "Data should have shape (n_samples, 700 * 57)."
-        # Reshape to (n_samples, 700, 57)
-        n_samples = data.shape[0]
-        data = data.reshape(n_samples, 700, 57)
+        # Reshape to (n_samples, context_length, n_embd)
+        data = data.reshape(-1, 700, 57)
         LOG.info(f"  Data reshaped to (n_samples, 700, 57). New shape: {data.shape}")
 
         # Take dataset split
+        if self.args.dataset_name in SPLITS:
+            # get predefined split indices for the dataset
+            split_indices = SPLITS[self.args.dataset_name].get(self.args.split)
+            if split_indices is None:
+                raise ValueError(f"Unknown split '{self.args.split}' for dataset '{self.args.dataset_name}'.")
+            data = data[split_indices]
+            LOG.info(f"  Data split '{self.args.split}' selected. New shape: {data.shape}")
+        else:
+            LOG.warning(f"  No predefined splits for dataset '{self.args.dataset_name}'. Using full dataset.")
 
-        return data
+        # Define Xs and Ys (both will incude the NoSeq feature)
+        Xs = np.concatenate([
+            # leave feature 22 NoSeq, model will learn to ignore it
+            data[:, :, :22],    # amino-acid residues (one-hot encoding) | 21 features
+            data[:, :, 31:33],  # N- and C- terminals | 2 features
+            data[:, :, 35:57],  # PSSM features | 22 features
+        ], axis=-1)  # 46 features in total
 
-    def _build_loader(self):
-        pass
+        # One-hot encoding of secondary structure labels | 9 features
+        Ys = data[:, :, 22:31]
+
+        dataset = TensorDataset(torch.from_numpy(Xs).float(), torch.from_numpy(Ys).float())
+        return dataset
+
+    def _build_loader(self, dataset: TensorDataset) -> DataLoader:
+        """Build a PyTorch DataLoader from the dataset."""
+        LOG.info(" Building DataLoader...")
+
+        # Create DataLoader
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.args.batch_size,
+            shuffle=self.args.shuffle,
+            num_workers=self.args.num_workers,
+            pin_memory=True,
+            collate_fn=my_collate,
+        )
+        LOG.info(f"  DataLoader created with batch size {self.args.batch_size}.")
+
+        return dataloader
 
 
 if __name__ == "__main__":
     # Preprocessing .npy.gz dataset files, save them to .npy
-    # paths = [
-    #     Path("data/cullpdb+profile_5926.npy.gz"),
-    #     Path("data/cullpdb+profile_5926_filtered.npy.gz"),
-    #     Path("data/cb513+profile_split1.npy.gz")
-    # ]
-    # for path in paths:
-    #     if not path.exists():
-    #         LOG.error(f"File '{path}' not found. Please download it and place it in the 'data/' folder.")
-    #         exit(1)
+    paths = [
+        Path("data/cullpdb+profile_5926.npy.gz"),
+        Path("data/cullpdb+profile_5926_filtered.npy.gz"),
+        Path("data/cb513+profile_split1.npy.gz")
+    ]
+    for path in paths:
+        if not path.exists():
+            LOG.error(f"File '{path}' not found. Please download it and place it in the 'data/' folder.")
+            exit(1)
 
-    #     data = np.load(path, allow_pickle=True)
-    #     np.save(path.with_suffix(""), data)
+        data = np.load(path, allow_pickle=True)
+        np.save(path.with_suffix(""), data)
 
-    #     # Check data shape and content
-    #     data_npy = np.load(path.with_suffix(""), allow_pickle=True)
-    #     assert isinstance(data_npy, np.ndarray), "Data should be a numpy array."
-    #     assert data_npy.ndim == 2, "Data should be a 2D array."
-    #     assert data_npy.shape[1] == 700 * 57, "Data should have shape (n_samples, 700 * 57)."
+        # Check data shape and content
+        data_npy = np.load(path.with_suffix(""), allow_pickle=True)
+        assert isinstance(data_npy, np.ndarray), "Data should be a numpy array."
+        assert data_npy.ndim == 2, "Data should be a 2D array."
+        assert data_npy.shape[1] == 700 * 57, "Data should have shape (n_samples, 700 * 57)."
 
-    #     LOG.info(f"Preprocessed '{path}'. Shape: {data_npy.shape}.")
-    # LOG.info("Data preprocessing completed.")
+        LOG.info(f"Preprocessed '{path}'. Shape: {data_npy.shape}.")
+    LOG.info("Data preprocessing completed.")
 
-    data_args = DataArgs(
-        # data_path=Path("data/cb513+profile_split1.npy")
-        data_path=Path("data/cullpdb+profile_5926.npy")
-        # data_path=Path("data/cullpdb+profile_5926_filtered.npy")
-    )
-    data_pipeline = DataPipeline(data_args)
-    data_pipeline.run()
+    # Inspection
+    pipe = DataPipeline()
+    dataset = pipe._load_data(pipe.dataset_path)
+    print("Checking sample 0, amino-acid (token) 0:")
+    x, y = dataset[0]  # take x and y from first sample
+    print(f" x shape: {x.shape} | y shape: {y.shape}")
+    print(f" y (one-hot) -> {y[0, :9]}")
+    print(f" [0, 21] -> {x[0, :21]}")
+    print(f" [31, 33] -> {x[0, 21:23]}")
+    print(f" [35, 57] -> {x[0, 23:45]}")
+
+    print("\nChecking sample 700, amino-acid (token) 700:")
+    print(f" y (one-hot) -> {y[-1, :9]}")
+    print(f" [0, 21] -> {x[-1, :21]}")
+    print(f" [31, 33] -> {x[-1, 21:23]}")
+    print(f" [35, 57] -> {x[-1, 23:45]}")
