@@ -1,59 +1,81 @@
 # Predicting protein secondary structure using deep learning
 
-Based on [Arxiv](https://arxiv.org/abs/1403.1347)
+This repository implements deep-learning models to predict protein secondary structure from sequence and profile features. The work follows the experimental setup of established literature and provides data preprocessing, model definitions, training loops, and evaluation utilities.
 
+**Key idea:** assign one of eight secondary-structure labels to each amino-acid residue in a protein sequence.
 
-## :one: Problem Statement
+**Paper reference:** https://arxiv.org/abs/1403.1347
 
-Predicting protein secondary structure is a fundamental problem in protein structure prediction.
+**Overview**
 
-- Labeling the secondary structure state of each amino-acid residue
+This project provides:
+- Data pipeline to convert compressed numpy dataset files into processed arrays suitable for training.
+- Model architectures in `scripts/models.py` and training logic in `scripts/train.py` and `scripts/trainer.py`.
+- Unit tests for dataset processing and model components under `tests/`.
 
+**Project structure**
 
-### Setup
+- `scripts/` : data pipeline, model definitions, training and testing scripts (`datasets.py`, `models.py`, `train.py`, `trainer.py`, `test.py`).
+- `data/` : place source `*.npy.gz` files here; processed `*.npy` will be written here by the pipeline.
+- `results/` : output directory for checkpoints and logs.
+- `tests/` : unit tests (`test_datasets.py`, `test_model.py`).
+- `config/` : example config files (e.g., `cullpdb_simple1dcnn.yaml`).
+- `main.py` : optional entry point.
 
-This project uses [uv]
+**Install**
 
+Used https://docs.astral.sh/uv/ for environment management, but you can use any Python environment manager using dependencies from `pyproject.toml`.
 
-### Dataset
+```bash
+# Install UV if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
 
-We evaluate the model on two datasets, one derived from the PISCES Cull PDB server (`cullpdb`) and the other is the CB513 dataset (`cb513`). The `cullpdb` comes also in a filtered version which removes redundant samples with the `cb513` benchmark. Training and evaluation for these two datasets is conducted as follows:
+## Dataset
 
-1. Training, validation, and testing on train, eval, and test splits from `cullpdb+profile_5926`
-2. Training and validation on train and eval splits from `cullpdb+profile_5926_filtered` and testing on `cb513`
+Get the dataset from https://mega.nz/folder/xct0XSpA#SKz72JtnSAaX61QLMC_JNg. This project expects the following compressed numpy dataset files (provided externally) to be placed in the `data/` folder:
+- `cb513+profile_split1.npy.gz` — CB513 test split
+- `cullpdb+profile_5926_filtered.npy.gz` — filtered Cull PDB (train+eval for CB513 evaluation)
+- `cullpdb+profile_5926.npy.gz` — Cull PDB (train, eval, test)
 
-Each protein samples comes in a sequence of amino-acid residues, the task is to label each residue with one of the eight secondary structure states.
-
-You need to create a `data/` containing the following files:
-- `cb513+profile_split1.npy.gz` the CB513 test split
-- `cullpdb+profile_5926_filtered.npy.gz` the filtered Cull PDB dataset (train and eval splits for CB513 evaluation)
-- `cullpdb+profile_5926.npy.gz` the Cull PDB dataset (train, eval, test splits)
-
-The dataset files saved as `npy.gz` will be converted to `npy` files by the data pipeline, run the following command:
+The repository contains a data pipeline that will convert `*.npy.gz` files into `*.npy` and reshape them for training. To run the conversion:
 
 ```bash
 uv run scripts/datasets.py
 ```
 
-You should have the `npy` files in the `data/` folder after running the command. Datasets have the following sizes:
+After running the pipeline you should find processed `*.npy` files in `data/`.
 
-| Name                            | Size        |
-| ------------------------------- | ----------- |
-| `cullpdb+profile_5926`          | 5926, 39900 |
-| `cullpdb+profile_5926_filtered` | 5365, 39900 |
-| `cb513+profile_split1`          | 514, 39900  |
+Typical dataset sizes (samples, features):
 
+- `cullpdb+profile_5926`: 5926 samples, 39900 features per sample (reshaped to length 700 × feature_dim 57)
+- `cullpdb+profile_5926_filtered`: 5365 samples
+- `cb513+profile_split1`: 514 samples
 
-Test data pipeline as follows:
+Run dataset unit tests:
 
 ```bash
-uv run tests/test_datasets.py
+uv run pytest tests/test_datasets.py
 ```
 
-Once reshaped, we will have for each sample 700 amino-acids and for each 57 features, in this form
+## Models
 
+Run model unit tests:
 
-### Model
+```bash
+uv run pytest tests/test_model.py
+```
 
+## Training
 
-## :two: Training results
+**Simple usage**
+
+Train a model using a configuration file (example):
+
+```bash
+uv run scripts/train.py --config config/cullpdb_simple1dcnn.yaml
+```
+
+**Configuration**
+
+Training and model settings are stored in YAML config files under `config/`. Edit or add new configs to try different architectures and hyperparameters.
