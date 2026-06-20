@@ -4,6 +4,10 @@ import logging
 import torch
 import numpy as np
 
+"""TODO:
+- [ ] Recall, precision, F1
+"""
+
 
 # Define logger
 logging.basicConfig(level=logging.INFO)

@@ -22,22 +22,29 @@ def main(opts: Namespace):
     traindata_pipeline = DataPipeline(args=traindata_args)
     train_loader = traindata_pipeline.run()
 
-    # evaldata_args = DataArgs(
-    #     dataset_name=opts.dataset_name,
-    #     split="eval"
-    # )
-    # evaldata_pipeline = DataPipeline(args=evaldata_args)
+    evaldata_args = DataArgs(
+        dataset_name=opts.dataset_name,
+        split="eval"
+    )
+    evaldata_pipeline = DataPipeline(args=evaldata_args)
+    eval_loader = evaldata_pipeline.run()
 
     LOG.info("\nLoading model...")
     model = build_model(opts)
-    LOG.info(f" Model ready:\n{model}")
+    n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    LOG.info(f" Model ready ({n_params:,} params)")
+    # print(model)
 
-    train_args = TrainArgs()
+    train_args = TrainArgs(
+        epochs=getattr(opts, 'epochs', 50),
+        learning_rate=getattr(opts, 'learning_rate', 0.01),
+    )
     LOG.info(f"\nTraining config: {train_args}\n")
     trainer = Trainer(
         args=train_args,
         model=model,
-        train_loader=train_loader
+        train_loader=train_loader,
+        eval_loader=eval_loader,
     )
     trainer.train()
 

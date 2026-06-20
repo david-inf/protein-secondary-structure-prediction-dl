@@ -3,16 +3,18 @@
 from utils import LOG, set_seeds, N, accuracy_q8
 
 from dataclasses import dataclass
+from typing import Optional, Tuple
 # import time
 from tqdm import tqdm
 import torch
 from torch import Tensor, nn, optim
+from torch.utils.data import DataLoader
 import numpy as np
 
 
 """TODO:
 - [ ] Checkpointing utilities
-- [ ] Validation loader
+- [x] Validation loader
 """
 
 
@@ -25,6 +27,7 @@ class TrainArgs:
     batch_size: int = 32
     # Optimizer stuff
     learning_rate: float = 1e-3
+    momentum: float = 0.0
     # Simple training on a single device (CPU or GPU).
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -34,7 +37,8 @@ class Trainer:
         self,
         args: TrainArgs,
         model: nn.Module,
-        train_loader,
+        train_loader: DataLoader,
+        eval_loader: Optional[DataLoader] = None
     ):
 
         if args is None:
@@ -60,9 +64,10 @@ class Trainer:
 
         # Data loaders
         self.train_loader = train_loader
+        self.eval_loader = eval_loader
 
         # Set a fixed optimizer for now.
-        self.optimizer = optim.SGD(
+        self.optimizer = optim.Adam(
             self.model.parameters(),
             lr=self.args.learning_rate,
         )
@@ -103,15 +108,40 @@ class Trainer:
                     self.optimizer.step()
 
                     if batch_idx % 20 == 0 or batch_idx == len(self.train_loader) - 1:
-                        train_loss = np.mean(losses[-10:])
-                        train_acc = np.mean(accs[-10:])
+                        # Training metrics
+                        train_loss = np.mean(losses[-20:])
+                        train_acc = np.mean(accs[-20:])
+                        # Validation metrics
+                        val_loss, val_acc = None, None
+                        if self.eval_loader is not None:
+                            val_loss, val_acc = self.evaluate()
+
                         tepoch.set_postfix(
-                            train_loss=train_loss, train_acc=train_acc)
+                            train_loss=train_loss, train_acc=train_acc,
+                            val_loss=val_loss, val_acc=val_acc)
                         tepoch.update()
 
         # Training completed
         # runtime = time.time() - train_start_time
 
     @torch.no_grad()
-    def evaluate(self) -> None:
-        pass
+    def evaluate(self) -> Tuple[float, float]:
+        """
+        Model validation pipeline.
+
+        Return validation loss and accuracy.
+        """
+        losses, accs = [], []
+        args = self.args
+        self.model.eval()
+
+        for inputs, targets in self.eval_loader:
+            inputs, targets = inputs.to(args.device), targets.to(args.device)
+
+            logits, loss = self.model(inputs, targets)
+
+            losses.append(N(loss))
+            acc = accuracy_q8(N(logits), N(targets))
+            accs.append(acc)
+
+        return np.mean(losses), np.mean(accs)
