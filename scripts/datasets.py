@@ -82,7 +82,7 @@ class DataPipeline:
         self.args = args
 
         # Take the corresponding dataset path based on the provided dataset name
-        self.dataset_path: Optional[Path] = None
+        self.dataset_path: Path
         if self.args.dataset_name == "cullpdb":
             self.dataset_path = Path("data/cullpdb+profile_5926.npy")
         elif self.args.dataset_name == "cullpdb_filtered":

@@ -41,3 +41,13 @@ def N(x: torch.Tensor) -> np.ndarray:
     -> Send back to cpu as numpy.ndarray
     """
     return x.detach().cpu().numpy()
+
+
+def accuracy_q8(logits: np.array, targets: np.array) -> float:
+    """Calculate the Q8 accuracy."""
+    # having logits with shape (B, T, K) we take the argmax on the K dim
+    pred = np.argmax(logits, axis=2)
+    assert np.all((pred >= 0) & (pred < 8)), "Predictions should be in range 0-7."
+    # Check against groundtruth and average the result
+    acc = np.mean(pred == targets)
+    return acc

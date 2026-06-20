@@ -1,0 +1,3 @@
+dataset_name: cullpdb
+
+model_name: simple1dcnn
