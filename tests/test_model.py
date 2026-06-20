@@ -11,7 +11,7 @@ def test_simple1dcnn():
     from torch import Tensor
     from torch.nn import functional as F
     import numpy as np
-    from scripts.models import Simple1DCNN
+    from scripts.simplecnn import Simple1DCNN
     from scripts.utils import N
 
     batch_size = 32

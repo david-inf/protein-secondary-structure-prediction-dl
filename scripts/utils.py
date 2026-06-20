@@ -1,11 +1,13 @@
 """Utilities."""
 
 import logging
+from typing import Tuple
 import torch
 import numpy as np
+from sklearn.metrics import f1_score, recall_score, precision_score
 
 """TODO:
-- [ ] Recall, precision, F1
+- [x] Recall, precision, F1
 """
 
 
@@ -47,7 +49,16 @@ def N(x: torch.Tensor) -> np.ndarray:
     return x.detach().cpu().numpy()
 
 
-def accuracy_q8(logits: np.array, targets: np.array) -> float:
+def build_model(opts):
+    """Factory function to build a model based on the provided options."""
+    if opts.model_name == "simple1dcnn":
+        from simplecnn import Simple1DCNN
+        return Simple1DCNN()
+    else:
+        raise ValueError(f"Unknown model type: {opts.model_name}")
+
+
+def accuracy_q8(logits: np.ndarray, targets: np.ndarray) -> float:
     """Calculate the Q8 accuracy."""
     # having logits with shape (B, T, K) we take the argmax on the K dim
     pred = np.argmax(logits, axis=2)
@@ -55,3 +66,17 @@ def accuracy_q8(logits: np.array, targets: np.array) -> float:
     # Check against groundtruth and average the result
     acc = np.mean(pred == targets)
     return acc
+
+
+def metrics_q8(logits: np.ndarray, targets: np.ndarray) -> Tuple[float, float, float]:
+    """Calculate the Recall, Precision, and F1 on Q8."""
+    pred = np.argmax(logits, axis=2)
+    # assert np.all((pred >= 0) & (pred < 8)), "Predictions should be in range 0-7."
+    # Reshape to 1D arrays for metric calculations
+    pred = pred.flatten()
+    targets = targets.flatten()
+
+    recall = recall_score(targets, pred, average='micro')
+    precision = precision_score(targets, pred, average='micro')
+    f1 = f1_score(targets, pred, average='micro')
+    return recall, precision, f1

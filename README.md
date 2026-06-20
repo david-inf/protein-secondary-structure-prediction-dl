@@ -7,14 +7,12 @@ This repository implements deep-learning models to predict protein secondary str
 **Paper reference:** https://arxiv.org/abs/1403.1347
 
 **Overview**
-
 This project provides:
 - Data pipeline to convert compressed numpy dataset files into processed arrays suitable for training.
 - Model architectures in `scripts/models.py` and training logic in `scripts/train.py` and `scripts/trainer.py`.
 - Unit tests for dataset processing and model components under `tests/`.
 
 **Project structure**
-
 - `scripts/` : data pipeline, model definitions, training and testing scripts (`datasets.py`, `models.py`, `train.py`, `trainer.py`, `test.py`).
 - `data/` : place source `*.npy.gz` files here; processed `*.npy` will be written here by the pipeline.
 - `results/` : output directory for checkpoints and logs.
@@ -23,13 +21,13 @@ This project provides:
 - `main.py` : optional entry point.
 
 **Install**
-
 Used https://docs.astral.sh/uv/ for environment management, but you can use any Python environment manager using dependencies from `pyproject.toml`.
 
 ```bash
 # Install UV if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
+
 
 ## Dataset
 
@@ -58,6 +56,7 @@ Run dataset unit tests:
 uv run pytest tests/test_datasets.py
 ```
 
+
 ## Models
 
 Run model unit tests:
@@ -66,10 +65,10 @@ Run model unit tests:
 uv run pytest tests/test_model.py
 ```
 
+
 ## Training
 
 **Simple usage**
-
 Train a model using a configuration file (example):
 
 ```bash

@@ -2,7 +2,7 @@
 
 from utils import LOG
 from datasets import DataArgs, DataPipeline
-from models import build_model
+from utils import build_model
 from trainer import TrainArgs, Trainer
 
 from argparse import ArgumentParser, Namespace

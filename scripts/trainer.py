@@ -1,6 +1,6 @@
 """Training utilities."""
 
-from utils import LOG, set_seeds, N, accuracy_q8
+from utils import LOG, set_seeds, N, accuracy_q8, metrics_q8
 
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -10,6 +10,7 @@ import torch
 from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader
 import numpy as np
+from sklearn.metrics import classification_report, confusion_matrix
 
 
 """TODO:
@@ -67,7 +68,7 @@ class Trainer:
         self.eval_loader = eval_loader
 
         # Set a fixed optimizer for now.
-        self.optimizer = optim.Adam(
+        self.optimizer = optim.AdamW(
             self.model.parameters(),
             lr=self.args.learning_rate,
         )
@@ -111,6 +112,7 @@ class Trainer:
                         # Training metrics
                         train_loss = np.mean(losses[-20:])
                         train_acc = np.mean(accs[-20:])
+                        _, _, train_f1 = metrics_q8(N(logits), N(targets))
                         # Validation metrics
                         val_loss, val_acc = None, None
                         if self.eval_loader is not None:
@@ -118,14 +120,16 @@ class Trainer:
 
                         tepoch.set_postfix(
                             train_loss=train_loss, train_acc=train_acc,
-                            val_loss=val_loss, val_acc=val_acc)
-                        tepoch.update()
+                            train_f1=train_f1)
+                        tepoch.update()        
+
+        # Final validation step with report
 
         # Training completed
         # runtime = time.time() - train_start_time
 
     @torch.no_grad()
-    def evaluate(self) -> Tuple[float, float]:
+    def evaluate(self, print_report: bool = False) -> Tuple[float, float]:
         """
         Model validation pipeline.
 

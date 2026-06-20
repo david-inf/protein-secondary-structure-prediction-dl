@@ -6,17 +6,23 @@ from utils import LOG
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Tuple
+from collections import defaultdict
 import numpy as np
 import torch
 from torch import Tensor
 from torch.utils.data import TensorDataset, DataLoader
+import matplotlib.pyplot as plt
 
 
 """TODO:
 - [ ] Do an offline preprocessing to create dataset splits in advance?
 - [x] Maybe leave the NoSeq feature in the data, and let the model learn to ignore it?
 - [x] Collate function for addressing padding and one-hot encoding of labels
+- [x] Plot class distribution in the dataset
+- [ ] Normalize data?
 """
+
+IGNORE_INDEX = -100  # for CrossEntropyLoss, ignore the NoSeq class in the labels
 
 SPLITS = {
     "cullpdb": {
@@ -46,7 +52,7 @@ def my_collate(batch: List[Tuple[Tensor, Tensor]]):
         y = item[1].argmax(dim=1)  # shape (700,)
         # check if padding token is present
         mask = (y == 8)  # NoSeq token is class 8
-        y[mask] = -100  # set padding token to -100 for CrossEntropyLoss
+        y[mask] = IGNORE_INDEX  # set padding token to IGNORE_INDEX for CrossEntropyLoss
         targets.append(y)
 
     return torch.stack(data), torch.stack(targets)
@@ -139,7 +145,15 @@ class DataPipeline:
             data[:, :, 35:57],  # PSSM features | 22 features
         ], axis=-1)  # 46 features in total
 
+        # Normalization (not much improvement)
+        # Xs_flat = Xs.reshape(-1, Xs.shape[-1])  # shape (n_samples * 700, 46)
+        # mean = Xs_flat.mean(axis=0)
+        # std = np.where(Xs_flat.std(axis=0) < 1e-6, 1, Xs_flat.std(axis=0))
+        # Xs = (Xs - mean) / std  # normalize each feature to have mean 0 and std 1
+        # LOG.info(f"  Data normalized. Mean: {mean}, Std: {std}")
+
         # One-hot encoding of secondary structure labels | 9 features
+        # a collate function will use the NoSeq to change label to -100 if detected
         Ys = data[:, :, 22:31]
 
         dataset = TensorDataset(torch.from_numpy(Xs).float(), torch.from_numpy(Ys).float())
@@ -187,19 +201,47 @@ if __name__ == "__main__":
         LOG.info(f"Preprocessed '{path}'. Shape: {data_npy.shape}.")
     LOG.info("Data preprocessing completed.")
 
-    # Inspection
-    pipe = DataPipeline()
-    dataset = pipe._load_data(pipe.dataset_path)
-    print("Checking sample 0, amino-acid (token) 0:")
-    x, y = dataset[0]  # take x and y from first sample
-    print(f" x shape: {x.shape} | y shape: {y.shape}")
-    print(f" y (one-hot) -> {y[0, :9]}")
-    print(f" [0, 21] -> {x[0, :21]}")
-    print(f" [31, 33] -> {x[0, 21:23]}")
-    print(f" [35, 57] -> {x[0, 23:45]}")
 
-    print("\nChecking sample 700, amino-acid (token) 700:")
-    print(f" y (one-hot) -> {y[-1, :9]}")
-    print(f" [0, 21] -> {x[-1, :21]}")
-    print(f" [31, 33] -> {x[-1, 21:23]}")
-    print(f" [35, 57] -> {x[-1, 23:45]}")
+    # Inspection
+    pipe_args = DataArgs(dataset_name="cullpdb", split="train")
+    pipe = DataPipeline(args=pipe_args)
+    loader = pipe.run()
+
+    distrib = defaultdict(int)
+    targets: Tensor
+    for _, targets in loader:
+        # targets with shape (B, T)
+        vals, counts = targets.unique(return_counts=True)
+        for i, val in enumerate(vals):
+            if val.item() == IGNORE_INDEX:
+                continue  # skip padding tokens
+            distrib[int(val.item())] += counts[i].item()
+    assert len(distrib) == 8, "There should be 8 classes (0-7) in the distribution."
+
+    LOG.info(f"Class distribution in {pipe_args.dataset_name} | split: {pipe_args.split}")
+    for cls, count in distrib.items():
+        LOG.info(f" Class {cls}: {count} samples")
+
+    # Plot distribution of classes (tokens)
+    plt.bar(distrib.keys(), distrib.values())
+    plt.xlabel("Class (token) index")
+    plt.ylabel("Count")
+    plt.title(f"Class distribution in {pipe_args.dataset_name} | split: {pipe_args.split}")
+    plt.grid(True, ls="--", lw=0.5)
+    path = Path("results/distrib")
+    path.mkdir(parents=True, exist_ok=True)
+    plt.savefig(path / f"{pipe_args.dataset_name}_{pipe_args.split}.png")
+
+    # print("Checking sample 0, amino-acid (token) 0:")
+    # x, y = dataset[0]  # take x and y from first sample
+    # print(f" x shape: {x.shape} | y shape: {y.shape}")
+    # print(f" y (one-hot) -> {y[0, :9]}")
+    # print(f" [0, 21] -> {x[0, :21]}")
+    # print(f" [31, 33] -> {x[0, 21:23]}")
+    # print(f" [35, 57] -> {x[0, 23:45]}")
+
+    # print("\nChecking sample 700, amino-acid (token) 700:")
+    # print(f" y (one-hot) -> {y[-1, :9]}")
+    # print(f" [0, 21] -> {x[-1, :21]}")
+    # print(f" [31, 33] -> {x[-1, 21:23]}")
+    # print(f" [35, 57] -> {x[-1, 23:45]}")
