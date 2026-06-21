@@ -1,11 +1,13 @@
 """Baseline CNN model definition."""
 
 from typing import Tuple, Optional
+import torch
 from torch import Tensor, nn
 import torch.nn.functional as F
 
 """TODO:
-- [ ] Loss function calculation inside forward pass?
+- [x] Loss function calculation inside forward pass?
+- [x] Class weights for cross-entropy loss
 """
 
 
@@ -16,6 +18,8 @@ class SimpleBlock(nn.Module):
         super().__init__()
 
         self.block = nn.Sequential(
+            # nn.BatchNorm1d(in_channels),
+            # nn.ReLU(),
             nn.Conv1d(
                 in_channels, out_channels, kernel_size, padding='same', bias=bias),
             nn.BatchNorm1d(out_channels),
@@ -60,7 +64,8 @@ class Simple1DCNN(nn.Module):
     def forward(
         self,
         x: Tensor,  # (B, T, C)
-        targets: Optional[Tensor] = None  # (B, T)
+        targets: Optional[Tensor] = None,  # (B, T)
+        use_class_weights: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         # x shape (batch_size, sequence_length=700, in_channels=46)
         # C size works as the embedding dimension in language models
@@ -77,6 +82,10 @@ class Simple1DCNN(nn.Module):
         logits = logits.permute(0, 2, 1)  # (B, T, K)
 
         if targets is not None:
+            # NOTE: weights aren't really working so far at 21/06
+            weights = None
+            if use_class_weights:
+                weights = torch.load("results/distrib/cullpdb_weights.pt").cuda()
             # Compute loss function value with provided targets
             loss = F.cross_entropy(
                 input=logits.reshape(-1, logits.size(-1)),  # (B*T, K)
@@ -85,6 +94,7 @@ class Simple1DCNN(nn.Module):
                 # computation, resulting between B and B*T effective samples
                 # as for language models, we have more than B sample per each batch
                 ignore_index=-100,
+                weight=weights,
             )  # will result in a scalar tensor
             return logits, loss
 

@@ -6,7 +6,7 @@ from utils import LOG
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, List, Tuple
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 import numpy as np
 import torch
 from torch import Tensor
@@ -214,15 +214,29 @@ if __name__ == "__main__":
         for i, val in enumerate(vals):
             if val.item() == IGNORE_INDEX:
                 continue  # skip padding tokens
-            distrib[int(val.item())] += counts[i].item()
+            distrib[f"{int(val.item())}"] += counts[i].item()
     assert len(distrib) == 8, "There should be 8 classes (0-7) in the distribution."
+    # sort keys
+    distrib_sort = OrderedDict(sorted(distrib.items(), key=lambda item: int(item[0])))
 
     LOG.info(f"Class distribution in {pipe_args.dataset_name} | split: {pipe_args.split}")
-    for cls, count in distrib.items():
+    for cls, count in distrib_sort.items():
         LOG.info(f" Class {cls}: {count} samples")
 
+    # Dump class weights for cross-entropy loss
+    num_samples = sum(distrib.values())
+    class_weights = []
+    for i in range(8):
+        weight = num_samples / (8 * distrib.get(str(i), 1e-6))
+        if weight < 10.:
+            class_weights.append(weight)
+        else:
+            class_weights.append(10.)  # cap weights to avoid instability during training
+    torch.save(torch.tensor(class_weights), f"results/distrib/{pipe_args.dataset_name}_weights.pt")
+    LOG.info(f"Class weights for CrossEntropyLoss: {class_weights}")
+
     # Plot distribution of classes (tokens)
-    plt.bar(distrib.keys(), distrib.values())
+    plt.bar(distrib_sort.keys(), distrib_sort.values())
     plt.xlabel("Class (token) index")
     plt.ylabel("Count")
     plt.title(f"Class distribution in {pipe_args.dataset_name} | split: {pipe_args.split}")

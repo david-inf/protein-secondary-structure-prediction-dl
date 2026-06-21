@@ -3,19 +3,21 @@
 from utils import LOG, set_seeds, N, accuracy_q8, metrics_q8
 
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List
 from pathlib import Path
-# import time
+import time
 from tqdm import tqdm
 import torch
 from torch import Tensor, nn, optim
 from torch.utils.data import DataLoader
 import numpy as np
 from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
 
 
 """TODO:
-- [ ] Checkpointing utilities
+- [x] Checkpointing utilities
+- [ ] Early stopping strategy
 - [x] Validation loader
 - [ ] Plot learning curves
 """
@@ -35,6 +37,10 @@ class TrainArgs:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     # Checkpointing
     checkpoint_path: str = "results/ckpts/checkpoint.pt"
+    # Logs
+    logs_path: str = "results/logs/logs.txt"
+    # Learning curves
+    curves_path: str = "results/curves/learning_curves.png"
 
 
 class Trainer:
@@ -79,10 +85,11 @@ class Trainer:
 
     def train(self) -> None:
         """Training loop."""
-        # train_start_time = time.time()
+        train_start_time = time.time()
         args = self.args
 
         losses, accs = [], []
+        val_losses, val_accs = [], []
 
         set_seeds(args.seed)
         LOG.info(f"Random seeds set to {args.seed}.")
@@ -99,6 +106,7 @@ class Trainer:
                     inputs, targets = inputs.to(args.device), targets.to(args.device)
 
                     # Forward pass
+                    # NOTE: each batch might have a different number of samples due to padding
                     loss: Tensor
                     logits, loss = self.model(inputs, targets)
 
@@ -114,23 +122,48 @@ class Trainer:
 
                     if batch_idx % 20 == 0 or batch_idx == len(self.train_loader) - 1:
                         # Training metrics
-                        train_loss = np.mean(losses[-20:])
-                        train_acc = np.mean(accs[-20:])
+                        train_loss = np.mean(losses[-5:])
+                        train_acc = np.mean(accs[-5:])
                         _, _, train_f1 = metrics_q8(N(logits), N(targets))
                         # Validation metrics
                         val_loss, val_acc = None, None
                         if self.eval_loader is not None:
                             val_loss, val_acc = self.evaluate()
+                            val_losses.append(val_loss)
 
                         tepoch.set_postfix(
                             train_loss=train_loss, train_acc=train_acc,
                             train_f1=train_f1)
-                        tepoch.update()        
+                        tepoch.update()
 
-        # Final validation step with report
+        # Final validation step with report in a log file
+        runtime = time.time() - train_start_time
+        if self.eval_loader is not None:
+            _, _ = self.evaluate(print_report=True)
+
+        # Learning curves
+        fig, axs = plt.subplots(1, 2, figsize=(12, 5))
+        axs[0].plot(losses, label='Training Loss')
+        axs[0].plot(val_losses, label='Validation Loss', color='orange')
+        axs[0].set_title('Training/Validation Loss Curve')
+        axs[0].set_xlabel('Step')
+        axs[0].set_ylabel('Loss')
+        axs[0].grid()
+        axs[0].set_yscale('log')
+        axs[0].legend()
+        axs[1].plot(accs, label='Training Accuracy', color='green')
+        axs[1].set_title('Training Accuracy Curve')
+        axs[1].set_xlabel('Step')
+        axs[1].set_ylabel('Accuracy')
+        axs[1].grid()
+        plt.tight_layout()
+        curves_path = Path(args.curves_path)
+        curves_path.parent.mkdir(parents=True, exist_ok=True)
+        plt.savefig(curves_path)
+        LOG.info(f"Learning curves saved to {curves_path}")
 
         # Training completed
-        # runtime = time.time() - train_start_time
+        self.save_checkpoint(args.checkpoint_path)
 
     @torch.no_grad()
     def evaluate(self, print_report: bool = False) -> Tuple[float, float]:
@@ -140,6 +173,11 @@ class Trainer:
         Return validation loss and accuracy.
         """
         losses, accs = [], []
+        # will be a list of f1 scores for each class
+        recall_scores, precision_scores, f1_scores = [], [], []
+
+        all_targets, all_preds = [], []
+
         args = self.args
         self.model.eval()
 
@@ -152,6 +190,48 @@ class Trainer:
             acc = accuracy_q8(N(logits), N(targets))
             accs.append(acc)
 
+            if print_report:
+                all_targets.append(N(targets).flatten())
+                all_preds.append(np.argmax(N(logits), axis=-1).flatten())
+            # report = classification_report(
+            #     N(targets).flatten(), np.argmax(N(logits), axis=-1).flatten(),
+            #     labels=list(range(8)), output_dict=True, zero_division=0)
+            # LOG.info(f"Classification report:\n{report}")
+            # cm = confusion_matrix(
+            #     N(targets).flatten(), np.argmax(N(logits), axis=-1).flatten(),
+            #     labels=list(range(8)))
+            # LOG.info(f"Confusion matrix:\n{cm}")
+
+            # Calculate f1 score for each class
+            recall, precision, f1 = metrics_q8(N(logits), N(targets), average=None)
+            recall_scores.append(recall)
+            precision_scores.append(precision)
+            f1_scores.append(f1)
+
+        if print_report:
+            report_path = Path(self.args.logs_path)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+
+            with report_path.open("w", encoding="utf-8") as report_file:
+                report_file.write(
+                    f"Recall scores for each class:\n {np.round(np.mean(recall_scores, axis=0), 4)}\n")
+                report_file.write(
+                    f"Precision scores for each class:\n {np.round(np.mean(precision_scores, axis=0), 4)}\n")
+                report_file.write(
+                    f"F1 scores for each class:\n {np.round(np.mean(f1_scores, axis=0), 4)}\n")
+
+                report_file.write(
+                    f"Overall accuracy: {np.mean(accs):.4f}\n")
+                report_file.write(
+                    f"Overall loss: {np.mean(losses):.4f}\n")
+
+                report_file.write(
+                    f"Classification report:\n{classification_report(np.concatenate(all_targets), np.concatenate(all_preds), labels=list(range(8)), zero_division=0)}\n")
+                report_file.write(
+                    f"Confusion matrix:\n{confusion_matrix(np.concatenate(all_targets), np.concatenate(all_preds), labels=list(range(8)))}\n")
+
+            LOG.info(f"Validation report saved to {report_path}")
+
         return np.mean(losses), np.mean(accs)
 
     def save_checkpoint(self, path: str) -> None:
@@ -160,6 +240,9 @@ class Trainer:
         torch.save({
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'args': self.args,
         }, path)
         LOG.info(f"Checkpoint saved to {path}.")
+
+    def learning_curves(self, losses: List[float]) -> None:
+        """Plot learning curves for training loss."""
+        return

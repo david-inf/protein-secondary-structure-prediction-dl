@@ -1,0 +1,13 @@
+dataset_name: cullpdb_filtered
+
+model_name: customcnn
+
+epochs: 300
+learning_rate: 0.001
+
+checkpoint_path: results/ckpts/cullpdb_filtered_customcnn.pt
+logs_path: results/logs/cullpdb_filtered_customcnn.txt
+curves_path: results/curves/cullpdb_filtered_customcnn.png
+
+test_report_path: results/test/cullpdb_filtered_customcnn_report.txt
+test_alignment_path: results/test/cullpdb_filtered_customcnn_alignment.txt

@@ -1,10 +1,9 @@
 """Training script."""
 
-from utils import LOG
+from utils import LOG, set_seeds
 from datasets import DataArgs, DataPipeline
 from utils import build_model
 from trainer import TrainArgs, Trainer
-
 from argparse import ArgumentParser, Namespace
 import yaml
 
@@ -15,6 +14,7 @@ import yaml
 
 def main(opts: Namespace):
     """Training entry point."""
+    set_seeds(getattr(opts, 'seed', 42))
     # Load train dataloader
     traindata_args = DataArgs(
         dataset_name=opts.dataset_name,
@@ -42,7 +42,9 @@ def main(opts: Namespace):
     train_args = TrainArgs(
         epochs=getattr(opts, 'epochs', 50),
         learning_rate=getattr(opts, 'learning_rate', 0.01),
-        checkpoint_path=getattr(opts, 'checkpoint_path', "results/ckpts/checkpoint.pt")
+        checkpoint_path=getattr(opts, 'checkpoint_path', "results/ckpts/checkpoint.pt"),
+        logs_path=getattr(opts, "logs_path", "results/ckpts/logs.txt"),
+        curves_path=getattr(opts, "curves_path", "results/curves/learning_curves.png"),
     )
     LOG.info(f"\nTraining config: {train_args}\n")
     trainer = Trainer(
@@ -68,6 +70,7 @@ if __name__ == "__main__":
     args = Namespace(**config)
 
     try:
+        set_seeds(getattr(args, 'seed', 42))
         main(args)
 
     except Exception as e:

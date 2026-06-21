@@ -4,7 +4,7 @@ import logging
 from typing import Tuple
 import torch
 import numpy as np
-from sklearn.metrics import f1_score, recall_score, precision_score
+from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_score
 
 """TODO:
 - [x] Recall, precision, F1
@@ -14,6 +14,7 @@ from sklearn.metrics import f1_score, recall_score, precision_score
 # Define logger
 logging.basicConfig(level=logging.INFO)
 LOG = logging.getLogger(__name__)
+
 
 def set_seeds(seed: int, deterministic: bool = False) -> None:
     """
@@ -54,6 +55,9 @@ def build_model(opts):
     if opts.model_name == "simple1dcnn":
         from simplecnn import Simple1DCNN
         return Simple1DCNN()
+    elif opts.model_name == "customcnn":
+        from customcnn import CustomCNN
+        return CustomCNN()
     else:
         raise ValueError(f"Unknown model type: {opts.model_name}")
 
@@ -68,15 +72,31 @@ def accuracy_q8(logits: np.ndarray, targets: np.ndarray) -> float:
     return acc
 
 
-def metrics_q8(logits: np.ndarray, targets: np.ndarray) -> Tuple[float, float, float]:
+def metrics_q8(logits: np.ndarray, targets: np.ndarray, average: str = 'micro') -> Tuple:
     """Calculate the Recall, Precision, and F1 on Q8."""
-    pred = np.argmax(logits, axis=2)
+    pred: np.ndarray = np.argmax(logits, axis=2)
     # assert np.all((pred >= 0) & (pred < 8)), "Predictions should be in range 0-7."
     # Reshape to 1D arrays for metric calculations
     pred = pred.flatten()
     targets = targets.flatten()
 
-    recall = recall_score(targets, pred, average='micro')
-    precision = precision_score(targets, pred, average='micro')
-    f1 = f1_score(targets, pred, average='micro')
+    if average is None:
+        # Return per-class metrics
+        num_classes = 8
+
+        # This will return arrays of shape (8,) for each metric
+        # NOTE: might happen that some classes are not present in the batch
+        recall = recall_score(
+            targets, pred, average=None, labels=list(range(num_classes)), zero_division=0)
+        precision = precision_score(
+            targets, pred, average=None, labels=list(range(num_classes)), zero_division=0)
+        f1 = f1_score(
+            targets, pred, average=None, labels=list(range(num_classes)), zero_division=0)
+
+        return recall, precision, f1
+
+    recall = recall_score(targets, pred, average=average)
+    precision = precision_score(targets, pred, average=average)
+    f1 = f1_score(targets, pred, average=average)
+
     return recall, precision, f1

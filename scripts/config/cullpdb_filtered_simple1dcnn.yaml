@@ -1,0 +1,13 @@
+dataset_name: cullpdb_filtered
+
+model_name: simple1dcnn
+
+epochs: 100
+learning_rate: 0.001
+
+checkpoint_path: results/ckpts/cullpdb_filtered_simple1dcnn.pt
+logs_path: results/logs/cullpdb_filtered_simple1dcnn.txt
+curves_path: results/curves/cullpdb_filtered_simple1dcnn.png
+
+test_report_path: results/test/cullpdb_filtered_simple1dcnn_report.txt
+test_alignment_path: results/test/cullpdb_filtered_simple1dcnn_alignment.txt

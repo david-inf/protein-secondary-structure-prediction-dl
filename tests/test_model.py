@@ -48,3 +48,31 @@ def test_simple1dcnn():
     correct = pred == N(targets)
     acc = np.mean(correct)
     assert isinstance(acc, float)
+
+
+def test_padding():
+    """Test that model can handle padded sequences."""
+    import torch
+    from scripts.simplecnn import Simple1DCNN
+
+    batch_size = 2
+    seq_length = 5
+    num_classes = 3
+
+    inputs = torch.randn(batch_size, seq_length, 4)
+    targets = torch.tensor([[0, 1, 2, -100, -100], [1, 0, 2, -100, -100]])  # -100 for padding
+
+    model = Simple1DCNN(in_features=4, num_classes=num_classes)
+    logits, loss = model(inputs, targets)
+    assert logits.shape == (batch_size, seq_length, num_classes), f"Expected (B, T, K) got {logits.shape}"
+    assert loss.ndim == 0, f"Loss function value expected to be a scalar, got {loss.shape}."
+    assert loss.item() >= 0, "Loss should be non-negative."
+
+    # Cross-check loss computation with manual calculation, ensuring padding tokens are ignored
+    import torch.nn.functional as F
+    manual_loss = F.cross_entropy(
+        input=logits[targets != -100].reshape(-1, logits.size(-1)),  # (B*T, K)
+        target=targets[targets != -100].view(-1),  # (B*T,)
+        ignore_index=-100,
+    )
+    assert torch.isclose(loss, manual_loss), "Loss computation mismatch with padding."
