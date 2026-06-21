@@ -29,6 +29,8 @@ def test(device, test_loader, model) -> None:
 
     LOG.info(f"Accuracy: {np.mean(accs)}")
 
+    # TODO: dump to a log file
+
 
 def main(opts: Namespace):
     """Testing script entry point."""
@@ -36,6 +38,8 @@ def main(opts: Namespace):
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
     # Load test dataloader
+    if opts.dataset_name == "cullpdb_filtered":
+        opts.dataset_name = "cb513"
     testdata_args = DataArgs(
         dataset_name=opts.dataset_name,
         split="test"
@@ -57,6 +61,29 @@ def main(opts: Namespace):
 
     # Launch testing
     test(device, test_loader, model)
+
+    # Sampling a few predictions for qualitative analysis
+    with torch.no_grad():
+        for inputs, targets in test_loader:
+            inputs, targets = inputs.to(device), targets.to(device)
+            logits, _ = model(inputs, targets)
+            break
+
+        preds = np.argmax(N(logits), axis=2)
+        # Alignment for few samples
+        trues = N(targets).astype(int)
+        out_path = Path(opts.test_alignment_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        with out_path.open("w", encoding="utf-8") as f:
+            n = min(10, len(trues))
+            for i in range(n):
+                # Print line with true and predicted labels for each sample
+                true_line = " ".join(str(int(x)) for x in trues[i])
+                pred_line = " ".join(str(int(x)) for x in preds[i])
+                f.write(f"# Sample {i}\n")
+                f.write(f"TRUE: {true_line}\n")
+                f.write(f"PRED: {pred_line}\n\n")
+        LOG.info(f"Wrote compact sample alignment to {out_path}")
 
 
 if __name__ == "__main__":
