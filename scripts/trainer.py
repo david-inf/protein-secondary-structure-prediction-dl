@@ -4,6 +4,7 @@ from utils import LOG, set_seeds, N, accuracy_q8, metrics_q8
 
 from dataclasses import dataclass
 from typing import Optional, Tuple
+from pathlib import Path
 # import time
 from tqdm import tqdm
 import torch
@@ -16,6 +17,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 """TODO:
 - [ ] Checkpointing utilities
 - [x] Validation loader
+- [ ] Plot learning curves
 """
 
 
@@ -31,6 +33,8 @@ class TrainArgs:
     momentum: float = 0.0
     # Simple training on a single device (CPU or GPU).
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    # Checkpointing
+    checkpoint_path: str = "results/ckpts/checkpoint.pt"
 
 
 class Trainer:
@@ -149,3 +153,13 @@ class Trainer:
             accs.append(acc)
 
         return np.mean(losses), np.mean(accs)
+
+    def save_checkpoint(self, path: str) -> None:
+        """Save model checkpoint."""
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+            'args': self.args,
+        }, path)
+        LOG.info(f"Checkpoint saved to {path}.")

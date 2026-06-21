@@ -1,4 +1,4 @@
-"""Model definitions."""
+"""Baseline CNN model definition."""
 
 from typing import Tuple, Optional
 from torch import Tensor, nn

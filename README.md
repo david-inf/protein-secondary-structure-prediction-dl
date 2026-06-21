@@ -2,7 +2,7 @@
 
 This repository implements deep-learning models to predict protein secondary structure from sequence and profile features. The work follows the experimental setup of established literature and provides data preprocessing, model definitions, training loops, and evaluation utilities.
 
-**Key idea:** assign one of eight secondary-structure labels to each amino-acid residue in a protein sequence.
+**Key idea:** assign one of eight secondary-structure labels to each amino-acid residue in a protein sequence. This task can be seen as a sequence labeling problem, where the input is a sequence of amino acids (and associated features) and the output is a sequence of secondary structure labels.
 
 **Paper reference:** https://arxiv.org/abs/1403.1347
 
@@ -42,9 +42,9 @@ The repository contains a data pipeline that will convert `*.npy.gz` files into 
 uv run scripts/datasets.py
 ```
 
-After running the pipeline you should find processed `*.npy` files in `data/`.
+After running the pipeline you should find processed `*.npy` files in `data/`. You can also simply place the processed `*.npy` files in `data/` if you already have them.
 
-Typical dataset sizes (samples, features):
+Dataset sizes (samples, features):
 
 - `cullpdb+profile_5926`: 5926 samples, 39900 features per sample (reshaped to length 700 × feature_dim 57)
 - `cullpdb+profile_5926_filtered`: 5365 samples
@@ -53,6 +53,7 @@ Typical dataset sizes (samples, features):
 Run dataset unit tests:
 
 ```bash
+# Test data loading pipeline
 uv run pytest tests/test_datasets.py
 ```
 
@@ -62,9 +63,22 @@ uv run pytest tests/test_datasets.py
 Run model unit tests:
 
 ```bash
+# Test model input/output shapes and forward pass
 uv run pytest tests/test_model.py
 ```
 
+**Simple1DCNN**
+
+Takes the amino-acid sequence (one-hot encoded), terminals, and PSSM features as input and predicts secondary structure labels. The architecture is a simple 1D CNN with configurable number of convolutional layers, kernel sizes, and hidden channels. See `scripts/simplecnn.py` for details.
+
+**CustomCNN**
+
+Takes the amino-acid sequence (one-hot encoded), terminals, and PSSM features as input and predicts secondary structure labels in separate branches, then fuses, and applies a configurable number of convolutional layers, kernel sizes, and hidden channels.
+
+- Amino-acid sequence is processed through an embedding layer.
+- PSSM features are projected to the same embedding dimension through a linear layer.
+
+Once we have the embeddings from both branches, we concatenate them with the terminals features and feed them into a configurable number of convolutional layers, followed by a final classification head. See `scripts/customcnn.py` for details.
 
 ## Training
 
@@ -72,9 +86,24 @@ uv run pytest tests/test_model.py
 Train a model using a configuration file (example):
 
 ```bash
-uv run scripts/train.py --config config/cullpdb_simple1dcnn.yaml
+uv run scripts/train.py --config cullpdb_simple1dcnn.yaml
+
+uv run scripts/train.py --config cullpdb_customcnn.yaml
 ```
 
 **Configuration**
 
 Training and model settings are stored in YAML config files under `config/`. Edit or add new configs to try different architectures and hyperparameters.
+
+**Results**
+
+```bash
+uv run scripts/test.py --config cullpdb_simple1dcnn.yaml
+
+uv run scripts/test.py --config cullpdb_customcnn.yaml
+```
+
+| Model       | cullpdb | cb513 |
+| ----------- | ------- | ----- |
+| Simple1DCNN | .       | .     |
+| CustomCNN   | .       | .     |

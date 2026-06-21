@@ -139,8 +139,7 @@ class DataPipeline:
 
         # Define Xs and Ys (both will incude the NoSeq feature)
         Xs = np.concatenate([
-            # leave feature 22 NoSeq, model will learn to ignore it
-            data[:, :, :22],    # amino-acid residues (one-hot encoding) | 21 features
+            data[:, :, :22],    # amino-acid residues (one-hot encoding) | 21 features + 1 (NoSeq)
             data[:, :, 31:33],  # N- and C- terminals | 2 features
             data[:, :, 35:57],  # PSSM features | 22 features
         ], axis=-1)  # 46 features in total
@@ -152,8 +151,8 @@ class DataPipeline:
         # Xs = (Xs - mean) / std  # normalize each feature to have mean 0 and std 1
         # LOG.info(f"  Data normalized. Mean: {mean}, Std: {std}")
 
-        # One-hot encoding of secondary structure labels | 9 features
-        # a collate function will use the NoSeq to change label to -100 if detected
+        # One-hot encoding of secondary structure labels | 8 classes + 1 (NoSeq)
+        # a collate function will use the NoSeq to change label to -100 when detected
         Ys = data[:, :, 22:31]
 
         dataset = TensorDataset(torch.from_numpy(Xs).float(), torch.from_numpy(Ys).float())
