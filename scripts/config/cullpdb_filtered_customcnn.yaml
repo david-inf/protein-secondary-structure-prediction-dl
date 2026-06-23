@@ -2,7 +2,7 @@ dataset_name: cullpdb_filtered
 
 model_name: customcnn
 
-epochs: 300
+epochs: 150
 learning_rate: 0.001
 
 checkpoint_path: results/ckpts/cullpdb_filtered_customcnn.pt

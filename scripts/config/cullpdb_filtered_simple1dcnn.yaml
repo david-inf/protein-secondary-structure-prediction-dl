@@ -2,7 +2,7 @@ dataset_name: cullpdb_filtered
 
 model_name: simple1dcnn
 
-epochs: 100
+epochs: 300
 learning_rate: 0.001
 
 checkpoint_path: results/ckpts/cullpdb_filtered_simple1dcnn.pt

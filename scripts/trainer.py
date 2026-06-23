@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 - [x] Checkpointing utilities
 - [ ] Early stopping strategy
 - [x] Validation loader
-- [ ] Plot learning curves
+- [x] Plot learning curves
 """
 
 
@@ -87,9 +87,11 @@ class Trainer:
         """Training loop."""
         train_start_time = time.time()
         args = self.args
+        step = 0
 
         losses, accs = [], []
         val_losses, val_accs = [], []
+        val_steps = []
 
         set_seeds(args.seed)
         LOG.info(f"Random seeds set to {args.seed}.")
@@ -120,6 +122,8 @@ class Trainer:
                     loss.backward()
                     self.optimizer.step()
 
+                    step += 1
+
                     if batch_idx % 20 == 0 or batch_idx == len(self.train_loader) - 1:
                         # Training metrics
                         train_loss = np.mean(losses[-5:])
@@ -130,6 +134,7 @@ class Trainer:
                         if self.eval_loader is not None:
                             val_loss, val_acc = self.evaluate()
                             val_losses.append(val_loss)
+                            val_steps.append(step)
 
                         tepoch.set_postfix(
                             train_loss=train_loss, train_acc=train_acc,
@@ -138,13 +143,15 @@ class Trainer:
 
         # Final validation step with report in a log file
         runtime = time.time() - train_start_time
+        LOG.info(f"Training completed in {runtime:.2f} seconds.")
         if self.eval_loader is not None:
             _, _ = self.evaluate(print_report=True)
 
         # Learning curves
         fig, axs = plt.subplots(1, 2, figsize=(12, 5))
         axs[0].plot(losses, label='Training Loss')
-        axs[0].plot(val_losses, label='Validation Loss', color='orange')
+        if val_losses:
+            axs[0].plot(val_steps, val_losses, label='Validation Loss', color='orange')
         axs[0].set_title('Training/Validation Loss Curve')
         axs[0].set_xlabel('Step')
         axs[0].set_ylabel('Loss')
@@ -156,6 +163,7 @@ class Trainer:
         axs[1].set_xlabel('Step')
         axs[1].set_ylabel('Accuracy')
         axs[1].grid()
+        plt.suptitle(Path(args.curves_path).stem)
         plt.tight_layout()
         curves_path = Path(args.curves_path)
         curves_path.parent.mkdir(parents=True, exist_ok=True)
@@ -213,6 +221,7 @@ class Trainer:
             report_path.parent.mkdir(parents=True, exist_ok=True)
 
             with report_path.open("w", encoding="utf-8") as report_file:
+                report_file.write("Validation report:\n")
                 report_file.write(
                     f"Recall scores for each class:\n {np.round(np.mean(recall_scores, axis=0), 4)}\n")
                 report_file.write(

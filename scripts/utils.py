@@ -12,7 +12,9 @@ from sklearn.metrics import f1_score, recall_score, precision_score, accuracy_sc
 
 
 # Define logger
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+)
 LOG = logging.getLogger(__name__)
 
 

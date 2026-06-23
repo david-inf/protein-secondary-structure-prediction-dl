@@ -202,7 +202,12 @@ if __name__ == "__main__":
 
 
     # Inspection
-    pipe_args = DataArgs(dataset_name="cullpdb", split="train")
+    import argparse
+    parser = argparse.ArgumentParser(description="Inspect dataset class distribution.")
+    parser.add_argument("--dataset_name", type=str, default="cullpdb", choices=["cullpdb", "cullpdb_filtered"])
+    args = parser.parse_args()
+
+    pipe_args = DataArgs(dataset_name=args.dataset_name, split="train")
     pipe = DataPipeline(args=pipe_args)
     loader = pipe.run()
 
@@ -225,6 +230,7 @@ if __name__ == "__main__":
 
     # Dump class weights for cross-entropy loss
     num_samples = sum(distrib.values())
+    LOG.info(f"Total samples: {num_samples}")
     class_weights = []
     for i in range(8):
         weight = num_samples / (8 * distrib.get(str(i), 1e-6))
@@ -241,6 +247,7 @@ if __name__ == "__main__":
     plt.ylabel("Count")
     plt.title(f"Class distribution in {pipe_args.dataset_name} | split: {pipe_args.split}")
     plt.grid(True, ls="--", lw=0.5)
+    plt.yscale("log")  # log scale for better visibility of underrepresented classes
     path = Path("results/distrib")
     path.mkdir(parents=True, exist_ok=True)
     plt.savefig(path / f"{pipe_args.dataset_name}_{pipe_args.split}.png")

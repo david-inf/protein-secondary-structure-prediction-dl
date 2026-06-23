@@ -8,6 +8,7 @@ from argparse import ArgumentParser, Namespace
 import yaml
 import torch
 import numpy as np
+from sklearn.metrics import classification_report, confusion_matrix
 
 """TODO:
 - [ ] Testing report
@@ -15,9 +16,11 @@ import numpy as np
 
 
 @torch.no_grad()
-def test(device, test_loader, model) -> None:
+def test(device, test_loader, model, path) -> None:
     """Model testing function."""
     accs = []
+    recall_scores, precision_scores, f1_scores = [], [], []
+    all_targets, all_preds = [], []
 
     for inputs, targets in test_loader:
         inputs, targets = inputs.to(device), targets.to(device)
@@ -27,9 +30,32 @@ def test(device, test_loader, model) -> None:
         acc = accuracy_q8(N(logits), N(targets))
         accs.append(acc)
 
-    LOG.info(f"Accuracy: {np.mean(accs)}")
+        recall, precision, f1 = metrics_q8(N(logits), N(targets), average=None)
+        recall_scores.append(recall)
+        precision_scores.append(precision)
+        f1_scores.append(f1)
 
-    # TODO: dump to a log file
+        all_targets.append(N(targets).flatten())
+        all_preds.append(np.argmax(N(logits), axis=-1).flatten())
+
+    report_path = Path(path)
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with report_path.open("w", encoding="utf-8") as report_file:
+        report_file.write(
+            f"Recall scores for each class:\n {np.round(np.mean(recall_scores, axis=0), 4)}\n")
+        report_file.write(
+            f"Precision scores for each class:\n {np.round(np.mean(precision_scores, axis=0), 4)}\n")
+        report_file.write(
+            f"F1 scores for each class:\n {np.round(np.mean(f1_scores, axis=0), 4)}\n")
+
+        report_file.write(
+            f"Overall accuracy: {np.mean(accs):.4f}\n")
+        report_file.write(
+            f"Classification report:\n{classification_report(np.concatenate(all_targets), np.concatenate(all_preds), labels=list(range(8)), zero_division=0)}\n")
+        report_file.write(
+            f"Confusion matrix:\n{confusion_matrix(np.concatenate(all_targets), np.concatenate(all_preds), labels=list(range(8)))}\n")
+    LOG.info(f"Wrote testing report to {report_path}")
 
 
 def main(opts: Namespace):
@@ -60,7 +86,7 @@ def main(opts: Namespace):
     LOG.info("Model ready")
 
     # Launch testing
-    test(device, test_loader, model)
+    test(device, test_loader, model, path=getattr(opts, 'test_report_path', "results/test/report.txt"))
 
     # Sampling a few predictions for qualitative analysis
     with torch.no_grad():
