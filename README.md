@@ -7,6 +7,7 @@ This repository implements deep-learning models to predict protein secondary str
 **Paper reference:** https://arxiv.org/abs/1403.1347
 
 **Overview**
+
 This project provides:
 - Data pipeline to convert compressed numpy dataset files into processed arrays suitable for training.
 - Model architectures in `scripts/models.py` and training logic in `scripts/train.py` and `scripts/trainer.py`.
@@ -14,6 +15,7 @@ This project provides:
 - Unit tests for dataset processing and model components under `tests/`.
 
 **Project structure**
+
 - `scripts/` : data pipeline, model definitions, training and testing scripts.
 - `data/` : place source `*.npy.gz` files here; processed `*.npy` will be written here by the pipeline.
 - `results/` : output directory for checkpoints and logs.
@@ -22,6 +24,7 @@ This project provides:
 - `main.py` : optional entry point.
 
 **Install**
+
 Used https://docs.astral.sh/uv/ for environment management, but you can use any Python environment manager using dependencies from `pyproject.toml`.
 
 ```bash
@@ -87,6 +90,7 @@ uv run pytest tests/test_datasets.py
 To address this problem the approach will be step-by-step building models of increasing complexity, starting with a simple 1D CNN and then moving to a custom architecture that processes sequence and profile features separately before fusing them. More approaches will be added in the future, see the "Conclusions and improvements" section at the end of this README.
 
 **Simple1DCNN**
+
 Takes the amino-acid sequence (one-hot encoded), terminals, and PSSM features as input and predicts secondary structure labels. The architecture is a simple 1D CNN with configurable number of convolutional layers, kernel sizes, and hidden channels. See `scripts/simplecnn.py` for details.
 
 ```bash
@@ -98,6 +102,7 @@ Takes the amino-acid sequence (one-hot encoded), terminals, and PSSM features as
 The basic block is composed as a standard `Conv1d -> BatchNorm1d -> ReLU`. The final classification head is a single `Conv1d` layer with kernel size 1 and output channels equal to the number of classes (8). Each convolution has a modifiable kernel size and a 'same' padding to preserve the sequence length.
 
 **CustomCNN**
+
 Takes the amino-acid sequence (one-hot encoded), terminals, and PSSM features as input and predicts secondary structure labels in separate branches, then fuses, and applies a configurable number of convolutional layers, kernel sizes, and hidden channels.
 
 - Amino-acid sequence is processed through an embedding layer.
@@ -132,6 +137,7 @@ uv run pytest tests/test_model.py
 ## Training
 
 **Launch training**
+
 Train a model using a configuration file (`scripts/config/*.yaml`):
 
 ```bash
@@ -165,6 +171,7 @@ The CustomCNN training is shorter than Simple1DCNN due to the high computational
 Training will save the checkpoint that will be used for testing in `results/checkpoints`.
 
 **Test**
+
 ```bash
 # Test Simple1DCNN
 uv run scripts/test.py --config cullpdb_simple1dcnn.yaml
@@ -190,11 +197,13 @@ Check [`results/test`](results/test) for the final testing report, which contain
 Looking at the test reports, for both Simple1DCNN and CustomCNN, the F1 score for each class aren't uniform, especially for underrepresented classes, which is expected given the imbalanced distribution of secondary structure labels in the dataset. This suggests that the model may be biased towards predicting the more common classes, and may struggle to accurately predict the underrepresented classes.
 
 **CustomCNN analysis**
+
 The CustomCNN architecture didn't perform well, which may be due to the fact that the model is not able to learn good representations for sequence and profile features with the current training setup, or that the fusion strategy is not effective. On one side, it may require more careful tuning of hyperparameters, such as learning rate, batch size, and model architecture (e.g., embedding dimension, hidden dimension, number of convolutional layers, kernel sizes). On the other hand, it may require a different training strategy, such as a different loss function tailored for an imbalanced dataset.
 
 The first training attempt aimed at reaching the interpolation threshold, over 300 epochs this was unsuccessful, this may support the idea that the model is not able to learn good representations for sequence but also that learning here is very slow, which may be due to the fact that the model is not able to effectively capture the relationships between sequence and profile features with the current architecture and training setup, which might be due to the class imbalance. For learning those representations, a longer training might be necessary, as well as moving to a different training setup as we're getting closer to a pretraining rather than a supervised training.
 
 **Potential Improvements**
+
 - [ ] Place a bidirectional LSTM on top of the convolutional layers to better capture long-range dependencies in the sequence
 - [ ] Transformer encoder to improve over the BiLSTM to capture long-range dependencies in the sequence
 - [ ] Load a pretraining model for the sequence branch, such as a protein language model, and finetune it on the secondary structure prediction task, this might help the model learn better representations for the sequence features, which is crucial for this task
