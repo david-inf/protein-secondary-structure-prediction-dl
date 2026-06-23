@@ -170,7 +170,7 @@ Check [`results/logs`](results/logs) for the final validation report, which cont
 The CustomCNN training is shorter than Simple1DCNN due to the high computational cost. An early stopping strategy might be employed to avoid overfitting, but for now we just train for a fixed number of epochs.
 Training will save the checkpoint that will be used for testing in `results/checkpoints`.
 
-**Test**
+## Testing
 
 ```bash
 # Test Simple1DCNN
